@@ -20,22 +20,29 @@ Regras:
 - Se houver sofrimento emocional intenso, desespero ou risco: acolha e sugira buscar apoio humano imediato (familiares, amigos, serviço de saúde).
 Estilo:
 - linguagem calorosa, simples, sem jargão, sem minimizar a dor.
-"""
+""".strip()
 
-def send_telegram_message(chat_id: int, text: str):
+
+def send_telegram_message(chat_id: int, text: str) -> None:
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload, timeout=20)
+    try:
+        requests.post(url, json=payload, timeout=20)
+    except Exception as e:
+        # Evita crash se o Telegram estiver instável
+        print("TELEGRAM SEND ERROR:", repr(e))
+
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
     data = await req.json()
 
-    message = data.get("message", {})
-    chat = message.get("chat", {})
+    message = data.get("message") or {}
+    chat = message.get("chat") or {}
     chat_id = chat.get("id")
 
-    text = message.get("text", "")
+    # Em alguns casos (stickers, etc.) não há texto
+    text = (message.get("text") or "").strip()
 
     if not chat_id:
         return {"ok": True}
@@ -63,10 +70,15 @@ async def telegram_webhook(req: Request):
         )
         return {"ok": True}
 
+    # Se vier algo sem texto (sticker/áudio etc.)
+    if not text:
+        send_telegram_message(chat_id, "Eu te ouvi 💜 Quer me contar em texto como você está agora?")
+        return {"ok": True}
+
     # mensagem normal → OpenAI
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": text},
@@ -74,25 +86,23 @@ async def telegram_webhook(req: Request):
             temperature=0.6,
         )
 
-        reply = response.choices[0].message.content.strip()
+        reply = (response.choices[0].message.content or "").strip()
         if not reply:
             reply = "Estou aqui com você 💜 Quer me contar um pouco mais?"
 
         send_telegram_message(chat_id, reply)
 
-        except Exception as e:
-        print("OPENAI ERROR:", repr(e))  # <- aparece no Render Logs
+    except Exception as e:
+        print("OPENAI ERROR:", repr(e))  # aparece no Render Logs
         send_telegram_message(
             chat_id,
             "Desculpa — tive uma instabilidade técnica aqui. 😕\n"
             "Pode tentar mandar de novo?"
         )
 
-
     return {"ok": True}
+
 
 @app.get("/")
 def health():
     return {"status": "ok"}
-
-
