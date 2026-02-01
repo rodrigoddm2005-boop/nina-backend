@@ -80,15 +80,17 @@ async def telegram_webhook(req: Request):
 
         send_telegram_message(chat_id, reply)
 
-    except Exception:
-        send_telegram_message(
-            chat_id,
-            "Desculpa — tive uma instabilidade técnica aqui. 😕\n"
-            "Pode tentar mandar de novo?"
-        )
+    except Exception as e:
+    print("OPENAI ERROR:", repr(e))  # <- isso vai aparecer no Render Logs
+    send_telegram_message(
+        chat_id,
+        "Desculpa — tive uma instabilidade técnica aqui. 😕\n"
+        "Pode tentar mandar de novo?"
+    )
 
     return {"ok": True}
 
 @app.get("/")
 def health():
     return {"status": "ok"}
+
